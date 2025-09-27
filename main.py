@@ -4,6 +4,7 @@ import uuid
 import base64
 import asyncio
 import requests
+import logging
 from dotenv import load_dotenv
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
