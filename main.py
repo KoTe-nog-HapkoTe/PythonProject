@@ -26,56 +26,59 @@ GIGA_CHAT_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 
 access_token = None
 token_expires_at = 0
+token_refresh_task = None
 user_last_request = {}
 
 #
-#   ---------------------------------------------------- Cooldown
+#   ---------------------------------------------------- Token Auto-Refresh
 #
-def can_make_request(user_id, cooldown_seconds=3600):
+
+async def refresh_gigachat_token_periodically():
     """
-    Проверяет, может ли пользователь сделать запрос.
-    cooldown_seconds: время ожидания между запросами (по умолчанию 1 час = 3600 секунд)
-    Возвращает True если можно делать запрос, False если нужно ждать
+    Фоновая задача для автоматического обновления токена каждые 30 минут
     """
-    current_time = time.time()
+    global access_token, token_expires_at
+    
+    while True:
+        try:
+            # Обновляем токен за 5 минут до истечения (25 минут ждем)
+            await asyncio.sleep(25 * 60)  # 25 минут
+            
+            print("Автоматическое обновление токена GigaChat...")
+            await refresh_gigachat_token()
+            
+        except Exception as e:
+            print(f"Ошибка при автоматическом обновлении токена: {e}")
+            # В случае ошибки пробуем снова через 5 минут
+            await asyncio.sleep(5 * 60)
 
-    if user_id not in user_last_request:
-        user_last_request[user_id] = current_time
-        return True
-
-    last_request_time = user_last_request[user_id]
-    time_since_last_request = current_time - last_request_time
-
-    if time_since_last_request >= cooldown_seconds:
-        user_last_request[user_id] = current_time
-        return True
-    else:
-        return False
-
-
-def get_remaining_time(user_id, cooldown_seconds=3600):
+async def refresh_gigachat_token():
     """
-    Возвращает оставшееся время до возможности следующего запроса в минутах
+    Обновляет токен GigaChat
     """
-    if user_id not in user_last_request:
-        return 0
+    global access_token, token_expires_at
+    
+    try:
+        response = get_gigachat_token_sync(GIGA_AUTH_KEY, GIGA_SCOPE)
+        token_data = response.json()
+        access_token = token_data['access_token']
 
-    current_time = time.time()
-    last_request_time = user_last_request[user_id]
-    time_since_last_request = current_time - last_request_time
+        if 'expires_at' in token_data:
+            token_expires_at = token_data['expires_at']
+        else:
+            token_expires_at = time.time() + 1800  # 30 минут
 
-    if time_since_last_request >= cooldown_seconds:
-        return 0
-    else:
-        remaining_seconds = cooldown_seconds - time_since_last_request
-        return int(remaining_seconds / 60)  # Возвращаем в минутах
+        print("Токен GigaChat успешно обновлен")
+        return access_token
+        
+    except Exception as e:
+        print("Ошибка при обновлении токена:", e)
+        # Не очищаем токен, чтобы можно было попробовать использовать старый
+        raise
 
-#
-#   ---------------------------------------------------- GigaChat
-#
-def get_gigachat_token(auth_token, scope='GIGACHAT_API_PERS'):
+def get_gigachat_token_sync(auth_token, scope='GIGACHAT_API_PERS'):
     """
-    Выполняет POST-запрос к эндпоинту, который выдает токен.
+    Синхронная версия функции получения токена
     """
     rq_uid = str(uuid.uuid4())
     url = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
@@ -99,7 +102,6 @@ def get_gigachat_token(auth_token, scope='GIGACHAT_API_PERS'):
         print(f"Ошибка при получении токена: {str(e)}")
         raise
 
-
 def get_access_token():
     """
     Получает или обновляет токен доступа GigaChat
@@ -107,24 +109,80 @@ def get_access_token():
     global access_token, token_expires_at
     now = time.time()
 
+    # Если токен отсутствует или истекает в течение 5 минут
     if access_token is None or now >= token_expires_at - 300:
         try:
-            response = get_gigachat_token(GIGA_AUTH_KEY, GIGA_SCOPE)
+            response = get_gigachat_token_sync(GIGA_AUTH_KEY, GIGA_SCOPE)
             token_data = response.json()
             access_token = token_data['access_token']
 
             if 'expires_at' in token_data:
                 token_expires_at = token_data['expires_at']
             else:
-                token_expires_at = now + 1800
+                token_expires_at = now + 1800  # 30 минут
 
             print("Токен GigaChat успешно получен")
+
+            # Запускаем фоновую задачу, если она еще не запущена
+            asyncio.create_task(start_token_refresh_task())
 
         except Exception as e:
             print("Ошибка при получении токена:", e)
             raise
 
     return access_token
+
+async def start_token_refresh_task():
+    """
+    Запускает фоновую задачу обновления токена
+    """
+    global token_refresh_task
+    
+    if token_refresh_task is None or token_refresh_task.done():
+        token_refresh_task = asyncio.create_task(refresh_gigachat_token_periodically())
+        print("Фоновая задача обновления токена запущена")
+
+#
+#   ---------------------------------------------------- Cooldown
+#
+
+def can_make_request(user_id, cooldown_seconds=3600):
+    """
+    Проверяет, может ли пользователь сделать запрос.
+    cooldown_seconds: время ожидания между запросами (по умолчанию 1 час = 3600 секунд)
+    Возвращает True если можно делать запрос, False если нужно ждать
+    """
+    current_time = time.time()
+
+    if user_id not in user_last_request:
+        user_last_request[user_id] = current_time
+        return True
+
+    last_request_time = user_last_request[user_id]
+    time_since_last_request = current_time - last_request_time
+
+    if time_since_last_request >= cooldown_seconds:
+        user_last_request[user_id] = current_time
+        return True
+    else:
+        return False
+
+def get_remaining_time(user_id, cooldown_seconds=3600):
+    """
+    Возвращает оставшееся время до возможности следующего запроса в минутах
+    """
+    if user_id not in user_last_request:
+        return 0
+
+    current_time = time.time()
+    last_request_time = user_last_request[user_id]
+    time_since_last_request = current_time - last_request_time
+
+    if time_since_last_request >= cooldown_seconds:
+        return 0
+    else:
+        remaining_seconds = cooldown_seconds - time_since_last_request
+        return int(remaining_seconds / 60)  # Возвращаем в минутах
 
 #
 #   ---------------------------------------------------- Kandinsky
@@ -176,7 +234,6 @@ async def generate_cat_image(prompt):
         print(f"Ошибка при генерации изображения: {e}")
         raise
 
-
 async def get_cat_breed_from_gigachat():
     """
     Получает описание породы кота от GigaChat
@@ -218,7 +275,6 @@ async def get_cat_breed_from_gigachat():
         print("Ошибка при запросе к GigaChat:", e)
         raise
 
-
 #
 #   ---------------------------------------------------- UX/Events
 #
@@ -236,12 +292,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=markup
     )
 
-
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Команды:\n/start - начать"
     )
-
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
@@ -293,7 +347,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #   ---------------------------------------------------- Main
 #
 
-def main():
+async def main():
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN отсутствует")
     if not GIGA_AUTH_KEY:
@@ -316,8 +370,9 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Бот запущен...")
-    app.run_polling()
-
+    
+    # Запускаем бота
+    await app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
