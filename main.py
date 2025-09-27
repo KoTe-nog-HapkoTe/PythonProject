@@ -339,7 +339,7 @@ def main():
     # Запускаем фоновую задачу в отдельном потоке
     # refresh_gigachat_token_periodically()
     def start_token_refresh():
-        asyncio.run(get_access_token())
+        asyncio.run(refresh_gigachat_token_periodically())
     
     import threading
     token_thread = threading.Thread(target=start_token_refresh, daemon=True)
