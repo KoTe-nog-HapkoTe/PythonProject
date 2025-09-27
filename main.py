@@ -252,31 +252,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "Сказать породу кота":
         # Отправляем сообщение о начале обработки
         processing_message = await update.message.reply_text("🐱 Генерирую породу кота и изображение...")
-
+        
         try:
             # Получаем породу кота от GigaChat
             cat_breed = await get_cat_breed_from_gigachat()
-
+            
             # Генерируем изображение асинхронно
             image_data = await generate_cat_image(cat_breed)
-
+            
             # Удаляем сообщение о обработке
             await processing_message.delete()
-
+            
             # Отправляем изображение с подписью
             await update.message.reply_photo(
                 photo=image_data,
                 caption=f"🎨 Сгенерированный кот: {cat_breed}",
                 parse_mode='Markdown'
             )
-
+            
         except Exception as e:
             # Удаляем сообщение о обработке в случае ошибки
             await processing_message.delete()
-
+            
             error_message = f"Произошла ошибка: {str(e)}"
             print(error_message)
-
+            
             # Если есть порода кота, но нет изображения
             if 'cat_breed' in locals():
                 await update.message.reply_text(
@@ -288,7 +288,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
     else:
         await update.message.reply_text("Нажми кнопку, чтобы узнать породу кота и увидеть его изображение!")
-
 
 #
 #   ---------------------------------------------------- Main
