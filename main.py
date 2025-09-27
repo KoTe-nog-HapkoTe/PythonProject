@@ -24,23 +24,51 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Получаем переменные окружения (Railway автоматически их подставляет)
+# 🔧 ПОЛУЧАЕМ ПЕРЕМЕННЫЕ ИЗ ОКРУЖЕНИЯ (Railway)
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 GIGA_AUTH_KEY = os.environ.get("GIGA_AUTH_KEY")
 KANDINSKY_API_KEY = os.environ.get("KANDINSKYAPIKEY")
 KANDINSKY_SECRET_KEY = os.environ.get("KANDINSKYSECRETKEY")
 GIGA_SCOPE = os.environ.get("GIGA_SCOPE", "GIGACHAT_API_PERS")
 
-# Убедимся, что обязательные переменные есть
-if not BOT_TOKEN:
-    logger.error("BOT_TOKEN не установлен")
-    exit(1)
+# Для локальной разработки можно оставить dotenv
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # Для локальной разработки
+    
+    # Переопределяем если не установлены в окружении
+    if not BOT_TOKEN:
+        BOT_TOKEN = os.getenv("BOT_TOKEN")
+    if not GIGA_AUTH_KEY:
+        GIGA_AUTH_KEY = os.getenv("GIGA_AUTH_KEY")
+    if not KANDINSKY_API_KEY:
+        KANDINSKY_API_KEY = os.getenv("KANDINSKYAPIKEY")
+    if not KANDINSKY_SECRET_KEY:
+        KANDINSKY_SECRET_KEY = os.getenv("KANDINSKYSECRETKEY")
+        
+except ImportError:
+    logger.info("dotenv не установлен, работаем только с переменными окружения")
 
-if not GIGA_AUTH_KEY:
-    logger.error("GIGA_AUTH_KEY не установлен")
-    exit(1)
+# Глобальные переменные для токена
+access_token = None
+token_expires_at = 0
 
-logger.info("Переменные окружения загружены")
+# Проверяем обязательные переменные при старте
+def check_environment_variables():
+    required_vars = {
+        "BOT_TOKEN": BOT_TOKEN,
+        "GIGA_AUTH_KEY": GIGA_AUTH_KEY,
+    }
+    
+    missing_vars = [var for var, value in required_vars.items() if not value]
+    if missing_vars:
+        error_msg = f"❌ Отсутствуют обязательные переменные: {', '.join(missing_vars)}"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+    
+    logger.info("✅ Все обязательные переменные окружения загружены")
+
+# Остальной код остается без изменений...
 GIGA_CHAT_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 
 access_token = None
