@@ -7,6 +7,7 @@ import requests
 from dotenv import load_dotenv
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import ApplicationBuilder
 from fusionbrain_sdk_python import AsyncFBClient, PipelineType
 
 # Отключаем предупреждения о SSL (только для разработки)
@@ -26,59 +27,43 @@ GIGA_CHAT_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 
 access_token = None
 token_expires_at = 0
-token_refresh_task = None
 user_last_request = {}
 
 #
 #   ---------------------------------------------------- Token Auto-Refresh
 #
 
-async def refresh_gigachat_token_periodically():
+async def refresh_gigachat_token():
     """
-    Фоновая задача для автоматического обновления токена каждые 30 минут
+    Фоновая задача для автоматического обновления токена GigaChat каждые 30 минут
     """
     global access_token, token_expires_at
     
     while True:
         try:
-            # Обновляем токен за 5 минут до истечения (25 минут ждем)
-            await asyncio.sleep(25 * 60)  # 25 минут
-            
             print("Автоматическое обновление токена GigaChat...")
-            await refresh_gigachat_token()
+            response = get_gigachat_token(GIGA_AUTH_KEY, GIGA_SCOPE)
+            token_data = response.json()
+            access_token = token_data['access_token']
+            
+            if 'expires_at' in token_data:
+                token_expires_at = token_data['expires_at']
+            else:
+                token_expires_at = time.time() + 1800  # 30 минут
+                
+            print(f"Токен GigaChat успешно обновлен. Действителен до: {time.ctime(token_expires_at)}")
+            
+            # Ждем 25 минут перед следующим обновлением (обновляем заранее)
+            await asyncio.sleep(25 * 60)
             
         except Exception as e:
             print(f"Ошибка при автоматическом обновлении токена: {e}")
             # В случае ошибки пробуем снова через 5 минут
             await asyncio.sleep(5 * 60)
 
-async def refresh_gigachat_token():
+def get_gigachat_token(auth_token, scope='GIGACHAT_API_PERS'):
     """
-    Обновляет токен GigaChat
-    """
-    global access_token, token_expires_at
-    
-    try:
-        response = get_gigachat_token_sync(GIGA_AUTH_KEY, GIGA_SCOPE)
-        token_data = response.json()
-        access_token = token_data['access_token']
-
-        if 'expires_at' in token_data:
-            token_expires_at = token_data['expires_at']
-        else:
-            token_expires_at = time.time() + 1800  # 30 минут
-
-        print("Токен GigaChat успешно обновлен")
-        return access_token
-        
-    except Exception as e:
-        print("Ошибка при обновлении токена:", e)
-        # Не очищаем токен, чтобы можно было попробовать использовать старый
-        raise
-
-def get_gigachat_token_sync(auth_token, scope='GIGACHAT_API_PERS'):
-    """
-    Синхронная версия функции получения токена
+    Выполняет POST-запрос к эндпоинту, который выдает токен.
     """
     rq_uid = str(uuid.uuid4())
     url = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
@@ -109,10 +94,10 @@ def get_access_token():
     global access_token, token_expires_at
     now = time.time()
 
-    # Если токен отсутствует или истекает в течение 5 минут
+    # Если токен отсутствует или истекает в течение 5 минут, обновляем его
     if access_token is None or now >= token_expires_at - 300:
         try:
-            response = get_gigachat_token_sync(GIGA_AUTH_KEY, GIGA_SCOPE)
+            response = get_gigachat_token(GIGA_AUTH_KEY, GIGA_SCOPE)
             token_data = response.json()
             access_token = token_data['access_token']
 
@@ -121,26 +106,13 @@ def get_access_token():
             else:
                 token_expires_at = now + 1800  # 30 минут
 
-            print("Токен GigaChat успешно получен")
-
-            # Запускаем фоновую задачу, если она еще не запущена
-            asyncio.create_task(start_token_refresh_task())
+            print(f"Токен GigaChat получен. Действителен до: {time.ctime(token_expires_at)}")
 
         except Exception as e:
             print("Ошибка при получении токена:", e)
             raise
 
     return access_token
-
-async def start_token_refresh_task():
-    """
-    Запускает фоновую задачу обновления токена
-    """
-    global token_refresh_task
-    
-    if token_refresh_task is None or token_refresh_task.done():
-        token_refresh_task = asyncio.create_task(refresh_gigachat_token_periodically())
-        print("Фоновая задача обновления токена запущена")
 
 #
 #   ---------------------------------------------------- Cooldown
@@ -363,8 +335,12 @@ async def main():
     except Exception as e:
         print(f"Ошибка подключения к GigaChat: {e}")
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    # Создаем приложение с поддержкой фоновых задач
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    # Добавляем фоновую задачу для обновления токена
+    app.job_queue.run_once(lambda context: asyncio.create_task(refresh_gigachat_token()), when=0)
+    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
