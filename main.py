@@ -16,12 +16,30 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ------------------------------------------ Глобальные переменные для токена
 
-load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-GIGA_AUTH_KEY = os.getenv("GIGA_AUTH_KEY")
-KANDINSKY_API_KEY = os.getenv("KANDINSKYAPIKEY")
-KANDINSKY_SECRET_KEY = os.getenv("KANDINSKYSECRETKEY")
-GIGA_SCOPE = os.getenv("GIGA_SCOPE", "GIGACHAT_API_PERS")
+# Настройка логирования
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# Получаем переменные окружения (Railway автоматически их подставляет)
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+GIGA_AUTH_KEY = os.environ.get("GIGA_AUTH_KEY")
+KANDINSKY_API_KEY = os.environ.get("KANDINSKYAPIKEY")
+KANDINSKY_SECRET_KEY = os.environ.get("KANDINSKYSECRETKEY")
+GIGA_SCOPE = os.environ.get("GIGA_SCOPE", "GIGACHAT_API_PERS")
+
+# Убедимся, что обязательные переменные есть
+if not BOT_TOKEN:
+    logger.error("BOT_TOKEN не установлен")
+    exit(1)
+
+if not GIGA_AUTH_KEY:
+    logger.error("GIGA_AUTH_KEY не установлен")
+    exit(1)
+
+logger.info("Переменные окружения загружены")
 GIGA_CHAT_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 
 access_token = None
