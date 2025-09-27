@@ -7,7 +7,6 @@ import requests
 from dotenv import load_dotenv
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from telegram.ext import ApplicationBuilder
 from fusionbrain_sdk_python import AsyncFBClient, PipelineType
 
 # Отключаем предупреждения о SSL (только для разработки)
@@ -28,14 +27,15 @@ GIGA_CHAT_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 access_token = None
 token_expires_at = 0
 user_last_request = {}
+token_refresh_task = None
 
 #
 #   ---------------------------------------------------- Token Auto-Refresh
 #
 
-async def refresh_gigachat_token():
+async def refresh_gigachat_token_periodically():
     """
-    Фоновая задача для автоматического обновления токена GigaChat каждые 30 минут
+    Фоновая задача для автоматического обновления токена GigaChat каждые 25 минут
     """
     global access_token, token_expires_at
     
@@ -89,7 +89,7 @@ def get_gigachat_token(auth_token, scope='GIGACHAT_API_PERS'):
 
 def get_access_token():
     """
-    Получает или обновляет токен доступа GigaChat
+    Получает или обновляет токен доaccess GigaChat
     """
     global access_token, token_expires_at
     now = time.time()
@@ -320,6 +320,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #
 
 async def main():
+    global token_refresh_task
+    
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN отсутствует")
     if not GIGA_AUTH_KEY:
@@ -335,20 +337,31 @@ async def main():
     except Exception as e:
         print(f"Ошибка подключения к GigaChat: {e}")
 
-    # Создаем приложение с поддержкой фоновых задач
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    # Добавляем фоновую задачу для обновления токена
-    app.job_queue.run_once(lambda context: asyncio.create_task(refresh_gigachat_token()), when=0)
+    # Запускаем фоновую задачу для обновления токена
+    token_refresh_task = asyncio.create_task(refresh_gigachat_token_periodically())
     
+    # Создаем приложение
+    app = Application.builder().token(BOT_TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Бот запущен...")
     
-    # Запускаем бота
-    await app.run_polling()
+    try:
+        # Запускаем бота
+        await app.run_polling()
+    except Exception as e:
+        print(f"Ошибка при работе бота: {e}")
+    finally:
+        # Отменяем фоновую задачу при остановке бота
+        if token_refresh_task:
+            token_refresh_task.cancel()
+            try:
+                await token_refresh_task
+            except asyncio.CancelledError:
+                print("Фоновая задача обновления токена остановлена")
 
 if __name__ == "__main__":
     asyncio.run(main())
