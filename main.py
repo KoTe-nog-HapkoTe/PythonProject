@@ -4,7 +4,6 @@ import uuid
 import base64
 import asyncio
 import requests
-import logging
 from dotenv import load_dotenv
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -17,58 +16,12 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ------------------------------------------ Глобальные переменные для токена
 
-# Настройка логирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-# 🔧 ПОЛУЧАЕМ ПЕРЕМЕННЫЕ ИЗ ОКРУЖЕНИЯ (Railway)
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-GIGA_AUTH_KEY = os.environ.get("GIGA_AUTH_KEY")
-KANDINSKY_API_KEY = os.environ.get("KANDINSKYAPIKEY")
-KANDINSKY_SECRET_KEY = os.environ.get("KANDINSKYSECRETKEY")
-GIGA_SCOPE = os.environ.get("GIGA_SCOPE", "GIGACHAT_API_PERS")
-
-# Для локальной разработки можно оставить dotenv
-try:
-    from dotenv import load_dotenv
-    load_dotenv()  # Для локальной разработки
-    
-    # Переопределяем если не установлены в окружении
-    if not BOT_TOKEN:
-        BOT_TOKEN = os.getenv("BOT_TOKEN")
-    if not GIGA_AUTH_KEY:
-        GIGA_AUTH_KEY = os.getenv("GIGA_AUTH_KEY")
-    if not KANDINSKY_API_KEY:
-        KANDINSKY_API_KEY = os.getenv("KANDINSKYAPIKEY")
-    if not KANDINSKY_SECRET_KEY:
-        KANDINSKY_SECRET_KEY = os.getenv("KANDINSKYSECRETKEY")
-        
-except ImportError:
-    logger.info("dotenv не установлен, работаем только с переменными окружения")
-
-# Глобальные переменные для токена
-access_token = None
-token_expires_at = 0
-
-# Проверяем обязательные переменные при старте
-def check_environment_variables():
-    required_vars = {
-        "BOT_TOKEN": BOT_TOKEN,
-        "GIGA_AUTH_KEY": GIGA_AUTH_KEY,
-    }
-    
-    missing_vars = [var for var, value in required_vars.items() if not value]
-    if missing_vars:
-        error_msg = f"❌ Отсутствуют обязательные переменные: {', '.join(missing_vars)}"
-        logger.error(error_msg)
-        raise ValueError(error_msg)
-    
-    logger.info("✅ Все обязательные переменные окружения загружены")
-
-# Остальной код остается без изменений...
+load_dotenv()
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+GIGA_AUTH_KEY = os.getenv("GIGA_AUTH_KEY")
+KANDINSKY_API_KEY = os.getenv("KANDINSKYAPIKEY")
+KANDINSKY_SECRET_KEY = os.getenv("KANDINSKYSECRETKEY")
+GIGA_SCOPE = os.getenv("GIGA_SCOPE", "GIGACHAT_API_PERS")
 GIGA_CHAT_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 
 access_token = None
