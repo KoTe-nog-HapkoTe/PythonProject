@@ -337,7 +337,6 @@ def main():
     print("Бот запущен...")
     
     # Запускаем фоновую задачу в отдельном потоке
-    # refresh_gigachat_token_periodically()
     def start_token_refresh():
         asyncio.run(refresh_gigachat_token_periodically())
     
