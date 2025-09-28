@@ -185,7 +185,7 @@ async def get_cat_breed_from_gigachat():
             "messages": [
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.7,
+            "temperature": 0.9,
             "max_tokens": 50
         }
 
