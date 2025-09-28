@@ -48,7 +48,7 @@ async def refresh_gigachat_token_periodically():
             if 'expires_at' in token_data:
                 token_expires_at = token_data['expires_at']
             else:
-                token_expires_at = time.time() + 1800  # 30 минут
+                token_expires_at = time.time() + 3  # 30 минут
                 
             print(f"Токен GigaChat успешно обновлен. Действителен до: {time.ctime(token_expires_at)}")
             
@@ -178,7 +178,7 @@ async def generate_cat_image(prompt):
         # 2. Запускаем генерацию
         run_result = await async_client.run_pipeline(
             pipeline_id=text2image_pipeline.id,
-            prompt=f"Красивый кот породы {prompt}, фотореалистичное изображение, высокое качество"
+            prompt=f"Смешной кот породы {prompt}, мультяшное изображение, высокое качество"
         )
 
         # 3. Ждем завершения генерации
@@ -209,7 +209,7 @@ async def get_cat_breed_from_gigachat():
     """
     Получает описание породы кота от GigaChat
     """
-    prompt = "Назови одну случайную породу кота с случайным прилагательным. Ответ должен быть кратким, только название породы с прилагательным. Например: 'Печальный мейн-кун' или 'Клоунский сиамец'. Не добавляй никаких дополнительных слов."
+    prompt = "Назови одну случайную породу кота с случайным смешным прилагательным. Ответ должен быть кратким, только название породы с прилагательным. Например: 'Печальный мейн-кун' или 'Клоунский сиамец'. Не добавляй никаких дополнительных слов."
 
     try:
         token = get_access_token()
