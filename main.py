@@ -240,12 +240,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "Сказать породу кота":
         # Проверяем cooldown
-        if not can_make_request(user_id):
-            remaining_time = get_remaining_time(user_id)
-            await update.message.reply_text(
-                f"Подождите еще {remaining_time} минут(ы) перед следующим запросом."
-            )
-            return
+        #if not can_make_request(user_id):
+        #    remaining_time = get_remaining_time(user_id)
+        #    await update.message.reply_text(
+        #        f"Подождите еще {remaining_time} минут(ы) перед следующим запросом."
+        #    )
+        #    return
 
         # Отправляем сообщение о начале обработки
         processing_message = await update.message.reply_text("🐱 Генерирую породу кота и изображение...")
