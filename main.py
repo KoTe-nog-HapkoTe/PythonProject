@@ -24,42 +24,53 @@ KANDINSKY_SECRET_KEY = os.getenv("KANDINSKYSECRETKEY")
 GIGA_SCOPE = os.getenv("GIGA_SCOPE", "GIGACHAT_API_PERS")
 GIGA_CHAT_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 
-access_token = None
-token_expires_at = 0
 user_last_request = {}
 
 #
-#   ---------------------------------------------------- Token Auto-Refresh
+#   ---------------------------------------------------- Cooldown
 #
-
-async def refresh_gigachat_token_periodically():
+def can_make_request(user_id, cooldown_seconds=3600):
     """
-    Фоновая задача для автоматического обновления токена GigaChat каждые 25 минут
+    Проверяет, может ли пользователь сделать запрос.
+    cooldown_seconds: время ожидания между запросами (по умолчанию 1 час = 3600 секунд)
+    Возвращает True если можно делать запрос, False если нужно ждать
     """
-    global access_token, token_expires_at
-    
-    while True:
-        try:
-            print("Автоматическое обновление токена GigaChat...")
-            response = get_gigachat_token(GIGA_AUTH_KEY, GIGA_SCOPE)
-            token_data = response.json()
-            access_token = token_data['access_token']
-            
-            if 'expires_at' in token_data:
-                token_expires_at = token_data['expires_at']
-            else:
-                token_expires_at = time.time() + 3  # 30 минут
-                
-            print(f"Токен GigaChat успешно обновлен. Действителен до: {time.ctime(token_expires_at)}")
-            
-            # Ждем 25 минут перед следующим обновлением (обновляем заранее)
-            await asyncio.sleep(25 * 60)
-            
-        except Exception as e:
-            print(f"Ошибка при автоматическом обновлении токена: {e}")
-            # В случае ошибки пробуем снова через 5 минут
-            await asyncio.sleep(5 * 60)
+    current_time = time.time()
 
+    if user_id not in user_last_request:
+        user_last_request[user_id] = current_time
+        return True
+
+    last_request_time = user_last_request[user_id]
+    time_since_last_request = current_time - last_request_time
+
+    if time_since_last_request >= cooldown_seconds:
+        user_last_request[user_id] = current_time
+        return True
+    else:
+        return False
+
+
+def get_remaining_time(user_id, cooldown_seconds=3600):
+    """
+    Возвращает оставшееся время до возможности следующего запроса в минутах
+    """
+    if user_id not in user_last_request:
+        return 0
+
+    current_time = time.time()
+    last_request_time = user_last_request[user_id]
+    time_since_last_request = current_time - last_request_time
+
+    if time_since_last_request >= cooldown_seconds:
+        return 0
+    else:
+        remaining_seconds = cooldown_seconds - time_since_last_request
+        return int(remaining_seconds / 60)  # Возвращаем в минутах
+
+#
+#   ---------------------------------------------------- GigaChat
+#
 def get_gigachat_token(auth_token, scope='GIGACHAT_API_PERS'):
     """
     Выполняет POST-запрос к эндпоинту, который выдает токен.
@@ -86,74 +97,22 @@ def get_gigachat_token(auth_token, scope='GIGACHAT_API_PERS'):
         print(f"Ошибка при получении токена: {str(e)}")
         raise
 
+
 def get_access_token():
     """
-    Получает или обновляет токен доступа GigaChat
+    Получает новый токен доступа GigaChat при каждом вызове
     """
-    global access_token, token_expires_at
-    now = time.time()
+    try:
+        response = get_gigachat_token(GIGA_AUTH_KEY, GIGA_SCOPE)
+        token_data = response.json()
+        access_token = token_data['access_token']
 
-    # Если токен отсутствует или истекает в течение 5 минут, обновляем его
-    if access_token is None or now >= token_expires_at - 300:
-        try:
-            response = get_gigachat_token(GIGA_AUTH_KEY, GIGA_SCOPE)
-            token_data = response.json()
-            access_token = token_data['access_token']
+        print("Токен GigaChat успешно получен")
+        return access_token
 
-            if 'expires_at' in token_data:
-                token_expires_at = token_data['expires_at']
-            else:
-                token_expires_at = now + 1800  # 30 минут
-
-            print(f"Токен GigaChat получен. Действителен до: {time.ctime(token_expires_at)}")
-
-        except Exception as e:
-            print("Ошибка при получении токена:", e)
-            raise
-
-    return access_token
-
-#
-#   ---------------------------------------------------- Cooldown
-#
-
-def can_make_request(user_id, cooldown_seconds=3600):
-    """
-    Проверяет, может ли пользователь сделать запрос.
-    cooldown_seconds: время ожидания между запросами (по умолчанию 1 час = 3600 секунд)
-    Возвращает True если можно делать запрос, False если нужно ждать
-    """
-    current_time = time.time()
-
-    if user_id not in user_last_request:
-        user_last_request[user_id] = current_time
-        return True
-
-    last_request_time = user_last_request[user_id]
-    time_since_last_request = current_time - last_request_time
-
-    if time_since_last_request >= cooldown_seconds:
-        user_last_request[user_id] = current_time
-        return True
-    else:
-        return False
-
-def get_remaining_time(user_id, cooldown_seconds=3600):
-    """
-    Возвращает оставшееся время до возможности следующего запроса в минутах
-    """
-    if user_id not in user_last_request:
-        return 0
-
-    current_time = time.time()
-    last_request_time = user_last_request[user_id]
-    time_since_last_request = current_time - last_request_time
-
-    if time_since_last_request >= cooldown_seconds:
-        return 0
-    else:
-        remaining_seconds = cooldown_seconds - time_since_last_request
-        return int(remaining_seconds / 60)  # Возвращаем в минутах
+    except Exception as e:
+        print("Ошибка при получении токена:", e)
+        raise
 
 #
 #   ---------------------------------------------------- Kandinsky
@@ -178,7 +137,7 @@ async def generate_cat_image(prompt):
         # 2. Запускаем генерацию
         run_result = await async_client.run_pipeline(
             pipeline_id=text2image_pipeline.id,
-            prompt=f"Смешной кот породы {prompt}, мультяшное изображение, высокое качество"
+            prompt=f"Красивый кот породы {prompt}, мультяшное изображение, высокое качество"
         )
 
         # 3. Ждем завершения генерации
@@ -205,6 +164,7 @@ async def generate_cat_image(prompt):
         print(f"Ошибка при генерации изображения: {e}")
         raise
 
+
 async def get_cat_breed_from_gigachat():
     """
     Получает описание породы кота от GigaChat
@@ -212,6 +172,7 @@ async def get_cat_breed_from_gigachat():
     prompt = "Назови одну случайную породу кота с случайным смешным прилагательным. Ответ должен быть кратким, только название породы с прилагательным. Например: 'Печальный мейн-кун' или 'Клоунский сиамец'. Не добавляй никаких дополнительных слов."
 
     try:
+        # Получаем новый токен при каждом вызове
         token = get_access_token()
 
         headers = {
@@ -246,6 +207,7 @@ async def get_cat_breed_from_gigachat():
         print("Ошибка при запросе к GigaChat:", e)
         raise
 
+
 #
 #   ---------------------------------------------------- UX/Events
 #
@@ -263,10 +225,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=markup
     )
 
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Команды:\n/start - начать"
     )
+
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
@@ -275,6 +239,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"[MSG] chat_id={chat_id}, user_id={user_id}, text={text}")
 
     if text == "Сказать породу кота":
+        # Проверяем cooldown
+        if not can_make_request(user_id):
+            remaining_time = get_remaining_time(user_id)
+            await update.message.reply_text(
+                f"Подождите еще {remaining_time} минут(ы) перед следующим запросом."
+            )
+            return
+
         # Отправляем сообщение о начале обработки
         processing_message = await update.message.reply_text("🐱 Генерирую породу кота и изображение...")
         
@@ -319,15 +291,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #
 
 def main():
-    # Проверяем подключение к GigaChat при старте
-    try:
-        print("Проверка подключения к GigaChat...")
-        get_access_token()
-        print("Подключение к GigaChat успешно!")
-    except Exception as e:
-        print(f"Ошибка подключения к GigaChat: {e}")
+    if not BOT_TOKEN:
+        raise ValueError("BOT_TOKEN отсутствует")
+    if not GIGA_AUTH_KEY:
+        raise ValueError("GIGA_AUTH_KEY отсутствует")
+    if not KANDINSKY_API_KEY or not KANDINSKY_SECRET_KEY:
+        print("Kandinsky API ключи не настроены. Генерация изображений будет недоступна.")
 
-    # Создаем приложение
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -335,17 +305,8 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Бот запущен...")
-    
-    # Запускаем фоновую задачу в отдельном потоке
-    def start_token_refresh():
-        asyncio.run(refresh_gigachat_token_periodically())
-    
-    import threading
-    token_thread = threading.Thread(target=start_token_refresh, daemon=True)
-    token_thread.start()
-    
-    # Запускаем бота в основном потоке
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
